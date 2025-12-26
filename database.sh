@@ -138,11 +138,313 @@ configure_mongodb() {
     log "MongoDB is running"
 }
 
+# Check if authentication is enabled
+check_authentication() {
+    log "Checking MongoDB authentication status..."
+    
+    # Try to run a command without authentication
+    if mongosh --quiet --eval "db.adminCommand('connectionStatus')" 2>/dev/null | grep -q "authenticatedUsers"; then
+        return 0  # Authentication is enabled
+    else
+        # Check config file
+        if grep -q "authorization: enabled" /etc/mongod.conf 2>/dev/null; then
+            return 0  # Authentication is enabled in config
+        fi
+        return 1  # Authentication is not enabled
+    fi
+}
+
+# Get existing admin user
+get_admin_user() {
+    # Try common admin users
+    for user in "admin" "root" "mongodb" "growthai_user"; do
+        if mongosh --quiet --eval "db.getUser('${user}')" admin 2>/dev/null | grep -q "user"; then
+            echo "${user}"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Create database and user
 create_database() {
     log "Creating database and user..."
     
-    # Create admin user and application database
+    # Check if authentication is enabled
+    if check_authentication; then
+        warning "MongoDB authentication is already enabled"
+        
+        # Try to find existing admin user
+        ADMIN_USER=$(get_admin_user)
+        
+        if [ -n "$ADMIN_USER" ] && [ "$ADMIN_USER" != "growthai_user" ]; then
+            warning "Found existing admin user: ${ADMIN_USER}"
+            read -p "Enter password for ${ADMIN_USER} (or press Enter to try without password): " ADMIN_PASSWORD
+            echo
+            
+            log "Authenticating as ${ADMIN_USER}..."
+            create_database_with_auth "${ADMIN_USER}" "${ADMIN_PASSWORD}"
+        else
+            # Try to authenticate with growthai_user if it exists
+            log "Attempting to authenticate with growthai_user..."
+            if mongosh --quiet --eval "db.auth('${MONGO_USER}', '${MONGO_PASSWORD}')" admin 2>/dev/null | grep -q "1"; then
+                log "Successfully authenticated with existing growthai_user"
+                create_database_with_auth "${MONGO_USER}" "${MONGO_PASSWORD}"
+            else
+                warning "Could not authenticate. You may need to provide admin credentials."
+                warning "If you don't have admin credentials, you can:"
+                warning "1. Temporarily disable authentication in /etc/mongod.conf"
+                warning "2. Restart MongoDB: sudo systemctl restart mongod"
+                warning "3. Run this script again"
+                warning "4. Re-enable authentication after setup"
+                read -p "Enter admin username (or press Enter to exit): " ADMIN_USER
+                if [ -z "$ADMIN_USER" ]; then
+                    exit 1
+                fi
+                read -p "Enter admin password: " ADMIN_PASSWORD
+                echo
+                create_database_with_auth "${ADMIN_USER}" "${ADMIN_PASSWORD}"
+            fi
+        fi
+    else
+        log "Authentication is not enabled, creating user without authentication..."
+        create_database_without_auth
+    fi
+}
+
+# Create database with authentication
+create_database_with_auth() {
+    local ADMIN_USER=$1
+    local ADMIN_PASSWORD=$2
+    
+    log "Setting up database: ${MONGO_DB_NAME}"
+    log "Creating user: ${MONGO_USER}"
+    log "Authenticating as: ${ADMIN_USER}"
+    
+    mongosh -u "${ADMIN_USER}" -p "${ADMIN_PASSWORD}" --authenticationDatabase admin <<EOF
+// Switch to admin database
+use admin
+
+// Create application user if it doesn't exist
+try {
+    db.createUser({
+        user: "${MONGO_USER}",
+        pwd: "${MONGO_PASSWORD}",
+        roles: [
+            { role: "readWrite", db: "${MONGO_DB_NAME}" },
+            { role: "dbAdmin", db: "${MONGO_DB_NAME}" },
+            { role: "readWrite", db: "admin" }
+        ]
+    })
+    print("User created successfully")
+} catch(e) {
+    if (e.code === 51003) {
+        print("User already exists, updating password...")
+        db.updateUser("${MONGO_USER}", {
+            pwd: "${MONGO_PASSWORD}",
+            roles: [
+                { role: "readWrite", db: "${MONGO_DB_NAME}" },
+                { role: "dbAdmin", db: "${MONGO_DB_NAME}" },
+                { role: "readWrite", db: "admin" }
+            ]
+        })
+        print("User updated successfully")
+    } else {
+        print("Error: " + e.message)
+        throw e
+    }
+}
+
+// Switch to application database
+use ${MONGO_DB_NAME}
+
+// Create collections (MongoDB creates them automatically on first insert, but we'll create them explicitly)
+try {
+    db.createCollection("users")
+    print("Collection 'users' created")
+} catch(e) {
+    if (e.code !== 48) throw e  // 48 = collection already exists
+}
+
+try {
+    db.createCollection("assignements")
+    print("Collection 'assignements' created")
+} catch(e) {
+    if (e.code !== 48) throw e
+}
+
+try {
+    db.createCollection("conversations")
+    print("Collection 'conversations' created")
+} catch(e) {
+    if (e.code !== 48) throw e
+}
+
+try {
+    db.createCollection("simpletests")
+    print("Collection 'simpletests' created")
+} catch(e) {
+    if (e.code !== 48) throw e
+}
+
+try {
+    db.createCollection("advancedtests")
+    print("Collection 'advancedtests' created")
+} catch(e) {
+    if (e.code !== 48) throw e
+}
+
+try {
+    db.createCollection("companydetails")
+    print("Collection 'companydetails' created")
+} catch(e) {
+    if (e.code !== 48) throw e
+}
+
+print("Collections created successfully")
+
+// Create indexes for better performance
+print("Creating indexes...")
+
+// Users indexes
+try {
+    db.users.createIndex({ username: 1 }, { unique: true })
+    print("Index created: users.username")
+} catch(e) {
+    if (e.code !== 85 && e.code !== 86) throw e  // 85 = index already exists, 86 = index options conflict
+}
+
+try {
+    db.users.createIndex({ email: 1 }, { unique: true })
+    print("Index created: users.email")
+} catch(e) {
+    if (e.code !== 85 && e.code !== 86) throw e
+}
+
+try {
+    db.users.createIndex({ role: 1 })
+    print("Index created: users.role")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+// Assignements indexes
+try {
+    db.assignements.createIndex({ owner: 1 })
+    print("Index created: assignements.owner")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.assignements.createIndex({ assignedTo: 1 })
+    print("Index created: assignements.assignedTo")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.assignements.createIndex({ type: 1 })
+    print("Index created: assignements.type")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.assignements.createIndex({ status: 1 })
+    print("Index created: assignements.status")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.assignements.createIndex({ createdAt: -1 })
+    print("Index created: assignements.createdAt")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+// Conversations indexes
+try {
+    db.conversations.createIndex({ userId: 1 })
+    print("Index created: conversations.userId")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.conversations.createIndex({ createdAt: -1 })
+    print("Index created: conversations.createdAt")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+// SimpleTests indexes
+try {
+    db.simpletests.createIndex({ user: 1 })
+    print("Index created: simpletests.user")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.simpletests.createIndex({ status: 1 })
+    print("Index created: simpletests.status")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.simpletests.createIndex({ createdAt: -1 })
+    print("Index created: simpletests.createdAt")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+// AdvancedTests indexes
+try {
+    db.advancedtests.createIndex({ user: 1 })
+    print("Index created: advancedtests.user")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.advancedtests.createIndex({ status: 1 })
+    print("Index created: advancedtests.status")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.advancedtests.createIndex({ createdAt: -1 })
+    print("Index created: advancedtests.createdAt")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+// CompanyDetails indexes
+try {
+    db.companydetails.createIndex({ user: 1 }, { unique: true })
+    print("Index created: companydetails.user")
+} catch(e) {
+    if (e.code !== 85 && e.code !== 86) throw e
+}
+
+print("Indexes created successfully")
+print("Database setup completed!")
+EOF
+
+    if [ $? -eq 0 ]; then
+        log "Database and user created successfully"
+    else
+        error "Failed to create database and user"
+        exit 1
+    fi
+}
+
+# Create database without authentication
+create_database_without_auth() {
     log "Setting up database: ${MONGO_DB_NAME}"
     log "Creating user: ${MONGO_USER}"
     
@@ -183,12 +485,47 @@ try {
 use ${MONGO_DB_NAME}
 
 // Create collections (MongoDB creates them automatically on first insert, but we'll create them explicitly)
-db.createCollection("users")
-db.createCollection("assignements")
-db.createCollection("conversations")
-db.createCollection("simpletests")
-db.createCollection("advancedtests")
-db.createCollection("companydetails")
+try {
+    db.createCollection("users")
+    print("Collection 'users' created")
+} catch(e) {
+    if (e.code !== 48) throw e  // 48 = collection already exists
+}
+
+try {
+    db.createCollection("assignements")
+    print("Collection 'assignements' created")
+} catch(e) {
+    if (e.code !== 48) throw e
+}
+
+try {
+    db.createCollection("conversations")
+    print("Collection 'conversations' created")
+} catch(e) {
+    if (e.code !== 48) throw e
+}
+
+try {
+    db.createCollection("simpletests")
+    print("Collection 'simpletests' created")
+} catch(e) {
+    if (e.code !== 48) throw e
+}
+
+try {
+    db.createCollection("advancedtests")
+    print("Collection 'advancedtests' created")
+} catch(e) {
+    if (e.code !== 48) throw e
+}
+
+try {
+    db.createCollection("companydetails")
+    print("Collection 'companydetails' created")
+} catch(e) {
+    if (e.code !== 48) throw e
+}
 
 print("Collections created successfully")
 
@@ -196,33 +533,129 @@ print("Collections created successfully")
 print("Creating indexes...")
 
 // Users indexes
-db.users.createIndex({ username: 1 }, { unique: true })
-db.users.createIndex({ email: 1 }, { unique: true })
-db.users.createIndex({ role: 1 })
+try {
+    db.users.createIndex({ username: 1 }, { unique: true })
+    print("Index created: users.username")
+} catch(e) {
+    if (e.code !== 85 && e.code !== 86) throw e  // 85 = index already exists, 86 = index options conflict
+}
+
+try {
+    db.users.createIndex({ email: 1 }, { unique: true })
+    print("Index created: users.email")
+} catch(e) {
+    if (e.code !== 85 && e.code !== 86) throw e
+}
+
+try {
+    db.users.createIndex({ role: 1 })
+    print("Index created: users.role")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
 
 // Assignements indexes
-db.assignements.createIndex({ owner: 1 })
-db.assignements.createIndex({ assignedTo: 1 })
-db.assignements.createIndex({ type: 1 })
-db.assignements.createIndex({ status: 1 })
-db.assignements.createIndex({ createdAt: -1 })
+try {
+    db.assignements.createIndex({ owner: 1 })
+    print("Index created: assignements.owner")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.assignements.createIndex({ assignedTo: 1 })
+    print("Index created: assignements.assignedTo")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.assignements.createIndex({ type: 1 })
+    print("Index created: assignements.type")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.assignements.createIndex({ status: 1 })
+    print("Index created: assignements.status")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.assignements.createIndex({ createdAt: -1 })
+    print("Index created: assignements.createdAt")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
 
 // Conversations indexes
-db.conversations.createIndex({ userId: 1 })
-db.conversations.createIndex({ createdAt: -1 })
+try {
+    db.conversations.createIndex({ userId: 1 })
+    print("Index created: conversations.userId")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.conversations.createIndex({ createdAt: -1 })
+    print("Index created: conversations.createdAt")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
 
 // SimpleTests indexes
-db.simpletests.createIndex({ user: 1 })
-db.simpletests.createIndex({ status: 1 })
-db.simpletests.createIndex({ createdAt: -1 })
+try {
+    db.simpletests.createIndex({ user: 1 })
+    print("Index created: simpletests.user")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.simpletests.createIndex({ status: 1 })
+    print("Index created: simpletests.status")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.simpletests.createIndex({ createdAt: -1 })
+    print("Index created: simpletests.createdAt")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
 
 // AdvancedTests indexes
-db.advancedtests.createIndex({ user: 1 })
-db.advancedtests.createIndex({ status: 1 })
-db.advancedtests.createIndex({ createdAt: -1 })
+try {
+    db.advancedtests.createIndex({ user: 1 })
+    print("Index created: advancedtests.user")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.advancedtests.createIndex({ status: 1 })
+    print("Index created: advancedtests.status")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
+
+try {
+    db.advancedtests.createIndex({ createdAt: -1 })
+    print("Index created: advancedtests.createdAt")
+} catch(e) {
+    if (e.code !== 85) throw e
+}
 
 // CompanyDetails indexes
-db.companydetails.createIndex({ user: 1 }, { unique: true })
+try {
+    db.companydetails.createIndex({ user: 1 }, { unique: true })
+    print("Index created: companydetails.user")
+} catch(e) {
+    if (e.code !== 85 && e.code !== 86) throw e
+}
 
 print("Indexes created successfully")
 print("Database setup completed!")
@@ -238,6 +671,14 @@ EOF
 
 # Enable MongoDB authentication
 enable_authentication() {
+    log "Checking MongoDB authentication status..."
+    
+    # Check if authentication is already enabled
+    if check_authentication; then
+        warning "MongoDB authentication is already enabled"
+        return 0
+    fi
+    
     log "Enabling MongoDB authentication..."
     
     # Backup original config
