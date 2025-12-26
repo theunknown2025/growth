@@ -154,20 +154,19 @@ check_authentication() {
     fi
 }
 
-# Get existing admin user
+# Get existing admin user (with timeout to avoid hanging)
 get_admin_user() {
-    # Try to list users (requires authentication, so this might fail)
-    # Instead, try common admin users
+    # Use timeout to prevent hanging
     for user in "admin" "root" "mongodb"; do
-        # Try to check if user exists (this will fail if auth is required, but that's okay)
-        if mongosh --quiet --eval "try { db.getUser('${user}'); print('exists') } catch(e) { print('') }" admin 2>/dev/null | grep -q "exists"; then
+        # Try with 2 second timeout
+        if timeout 2 mongosh --quiet --eval "try { db.getUser('${user}'); print('exists') } catch(e) { print('') }" admin 2>/dev/null | grep -q "exists"; then
             echo "${user}"
             return 0
         fi
     done
     
     # Also check growthai_user
-    if mongosh --quiet --eval "try { db.getUser('growthai_user'); print('exists') } catch(e) { print('') }" admin 2>/dev/null | grep -q "exists"; then
+    if timeout 2 mongosh --quiet --eval "try { db.getUser('growthai_user'); print('exists') } catch(e) { print('') }" admin 2>/dev/null | grep -q "exists"; then
         echo "growthai_user"
         return 0
     fi
