@@ -365,29 +365,15 @@ upstream frontend {
     server localhost:${FRONTEND_PORT};
 }
 
-# HTTP to HTTPS redirect
+# HTTP Server (initial setup - before SSL)
 server {
     listen 80;
     server_name ${DOMAIN_NAME} www.${DOMAIN_NAME};
     
-    # For Let's Encrypt
+    # For Let's Encrypt certificate generation
     location /.well-known/acme-challenge/ {
         root /var/www/html;
     }
-    
-    location / {
-        return 301 https://\$server_name\$request_uri;
-    }
-}
-
-# HTTPS Server
-server {
-    listen 443 ssl http2;
-    server_name ${DOMAIN_NAME} www.${DOMAIN_NAME};
-    
-    # SSL Configuration (update after certificate installation)
-    # ssl_certificate /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem;
-    # ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem;
     
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -434,6 +420,76 @@ server {
     # Increase body size for file uploads
     client_max_body_size 50M;
 }
+
+# HTTPS Server (uncomment after SSL certificate installation)
+# After running: certbot --nginx -d ${DOMAIN_NAME}
+# Then uncomment the lines below and comment out the HTTP server above
+#
+# server {
+#     listen 80;
+#     server_name ${DOMAIN_NAME} www.${DOMAIN_NAME};
+#     
+#     location /.well-known/acme-challenge/ {
+#         root /var/www/html;
+#     }
+#     
+#     location / {
+#         return 301 https://\$server_name\$request_uri;
+#     }
+# }
+#
+# server {
+#     listen 443 ssl http2;
+#     server_name ${DOMAIN_NAME} www.${DOMAIN_NAME};
+#     
+#     ssl_certificate /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem;
+#     
+#     # Security headers
+#     add_header X-Frame-Options "SAMEORIGIN" always;
+#     add_header X-Content-Type-Options "nosniff" always;
+#     add_header X-XSS-Protection "1; mode=block" always;
+#     
+#     # API routes
+#     location /api {
+#         proxy_pass http://backend;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade \$http_upgrade;
+#         proxy_set_header Connection 'upgrade';
+#         proxy_set_header Host \$host;
+#         proxy_set_header X-Real-IP \$remote_addr;
+#         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto \$scheme;
+#         proxy_cache_bypass \$http_upgrade;
+#         proxy_read_timeout 300s;
+#         proxy_connect_timeout 75s;
+#     }
+#     
+#     # Documents (static files from backend)
+#     location /documents {
+#         proxy_pass http://backend;
+#         proxy_set_header Host \$host;
+#         proxy_set_header X-Real-IP \$remote_addr;
+#         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto \$scheme;
+#     }
+#     
+#     # Frontend
+#     location / {
+#         proxy_pass http://frontend;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade \$http_upgrade;
+#         proxy_set_header Connection 'upgrade';
+#         proxy_set_header Host \$host;
+#         proxy_set_header X-Real-IP \$remote_addr;
+#         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto \$scheme;
+#         proxy_cache_bypass \$http_upgrade;
+#     }
+#     
+#     # Increase body size for file uploads
+#     client_max_body_size 50M;
+# }
 EOF
 
     # Enable site
@@ -586,16 +642,17 @@ main() {
     log "MongoDB Credentials saved to: ${APP_DIR}/.mongo_credentials"
     log ""
     log "Next Steps:"
-    log "1. Update backend .env file with your OpenAI API key"
-    log "2. Update frontend .env.local if needed"
-    log "3. Install SSL certificate: certbot --nginx -d ${DOMAIN_NAME}"
-    log "4. Update Nginx config to uncomment SSL lines after certificate installation"
-    log "5. Check application status: pm2 status"
-    log "6. View logs: pm2 logs"
+    log "1. Update backend .env file with your OpenAI API key:"
+    log "   sudo nano ${BACKEND_DIR}/.env"
+    log "2. Restart backend: sudo -u ${APP_USER} pm2 restart growth-ai-backend"
+    log "3. Install SSL certificate: sudo certbot --nginx -d ${DOMAIN_NAME}"
+    log "   (Certbot will automatically update Nginx config for SSL)"
+    log "4. Check application status: sudo -u ${APP_USER} pm2 status"
+    log "5. View logs: sudo -u ${APP_USER} pm2 logs"
     log ""
     log "Backend URL: http://localhost:${BACKEND_PORT}"
     log "Frontend URL: http://localhost:${FRONTEND_PORT}"
-    log "Public URL: https://${DOMAIN_NAME} (after SSL setup)"
+    log "Public URL: http://${DOMAIN_NAME} (https:// after SSL setup)"
     log ""
     log "Deployment completed successfully!"
 }
