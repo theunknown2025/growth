@@ -185,73 +185,38 @@ create_database() {
         log "To create the database and user, you need admin credentials."
         log ""
         
-        # Try to find existing admin user
-        log "Checking for existing admin users..."
-        ADMIN_USER=$(get_admin_user)
+        # Skip checking for users (hangs when auth is enabled)
+        # Go directly to the prompt
+        log "Options:"
+        log "1. Temporarily disable authentication (recommended - script handles everything)"
+        log "2. Provide admin credentials (if you have them)"
+        log ""
+        read -p "Temporarily disable authentication? (Y/n) " -n 1 -r
+        echo
+        log ""
         
-        if [ -n "$ADMIN_USER" ] && [ "$ADMIN_USER" != "growthai_user" ]; then
-            warning "Found existing admin user: ${ADMIN_USER}"
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            # User chose to disable authentication (default/yes)
+            log "Temporarily disabling authentication..."
+            disable_authentication_temporarily
+            log "Authentication disabled. Creating database and user..."
+            create_database_without_auth
+            log "Re-enabling authentication..."
+            enable_authentication
+        else
+            # User chose to provide admin credentials
+            log "You chose to provide admin credentials."
             log ""
-            read -p "Enter password for ${ADMIN_USER} (or press Enter to try without password): " ADMIN_PASSWORD
+            read -p "Enter admin username: " ADMIN_USER
+            if [ -z "$ADMIN_USER" ]; then
+                error "No username provided. Exiting."
+                exit 1
+            fi
+            read -sp "Enter admin password: " ADMIN_PASSWORD
             echo
-            
+            log ""
             log "Authenticating as ${ADMIN_USER}..."
             create_database_with_auth "${ADMIN_USER}" "${ADMIN_PASSWORD}"
-        else
-            # Check if growthai_user already exists
-            log "Checking if growthai_user already exists..."
-            if mongosh --quiet --eval "db.getUser('${MONGO_USER}')" admin 2>/dev/null | grep -q "user"; then
-                warning "User '${MONGO_USER}' already exists!"
-                log "If you know the password, we can use it. Otherwise, you need admin credentials."
-                read -p "Do you know the password for ${MONGO_USER}? (y/n) " -n 1 -r
-                echo
-                if [[ $REPLY =~ ^[Yy]$ ]]; then
-                    read -sp "Enter password for ${MONGO_USER}: " MONGO_PASSWORD_INPUT
-                    echo
-                    MONGO_PASSWORD="${MONGO_PASSWORD_INPUT}"
-                    log "Attempting to authenticate with ${MONGO_USER}..."
-                    create_database_with_auth "${MONGO_USER}" "${MONGO_PASSWORD}"
-                else
-                    log ""
-                    warning "You need admin credentials to proceed."
-                    log ""
-                    read -p "Enter admin username: " ADMIN_USER
-                    read -sp "Enter admin password: " ADMIN_PASSWORD
-                    echo
-                    log ""
-                    create_database_with_auth "${ADMIN_USER}" "${ADMIN_PASSWORD}"
-                fi
-            else
-                log ""
-                warning "No admin user found. You need to provide admin credentials."
-                log ""
-                log "Options:"
-                log "1. Enter admin credentials (if you have them)"
-                log "2. Temporarily disable authentication (script will handle this)"
-                log ""
-                read -p "Do you want to temporarily disable authentication? (y/n) " -n 1 -r
-                echo
-                if [[ $REPLY =~ ^[Yy]$ ]]; then
-                    log ""
-                    log "Temporarily disabling authentication..."
-                    disable_authentication_temporarily
-                    log "Authentication disabled. Creating database and user..."
-                    create_database_without_auth
-                    log "Re-enabling authentication..."
-                    enable_authentication
-                else
-                    log ""
-                    read -p "Enter admin username (or press Enter to exit): " ADMIN_USER
-                    if [ -z "$ADMIN_USER" ]; then
-                        error "Exiting. Please provide admin credentials or disable authentication temporarily."
-                        exit 1
-                    fi
-                    read -sp "Enter admin password: " ADMIN_PASSWORD
-                    echo
-                    log ""
-                    create_database_with_auth "${ADMIN_USER}" "${ADMIN_PASSWORD}"
-                fi
-            fi
         fi
     else
         log "Authentication is not enabled, creating user without authentication..."
