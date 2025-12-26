@@ -225,22 +225,33 @@ create_database() {
             else
                 log ""
                 warning "No admin user found. You need to provide admin credentials."
-                warning ""
-                warning "If you don't have admin credentials, you can:"
-                warning "1. Temporarily disable authentication in /etc/mongod.conf"
-                warning "2. Restart MongoDB: sudo systemctl restart mongod"
-                warning "3. Run this script again"
-                warning "4. Re-enable authentication after setup"
                 log ""
-                read -p "Enter admin username (or press Enter to exit): " ADMIN_USER
-                if [ -z "$ADMIN_USER" ]; then
-                    error "Exiting. Please provide admin credentials or disable authentication temporarily."
-                    exit 1
-                fi
-                read -sp "Enter admin password: " ADMIN_PASSWORD
+                log "Options:"
+                log "1. Enter admin credentials (if you have them)"
+                log "2. Temporarily disable authentication (script will handle this)"
+                log ""
+                read -p "Do you want to temporarily disable authentication? (y/n) " -n 1 -r
                 echo
-                log ""
-                create_database_with_auth "${ADMIN_USER}" "${ADMIN_PASSWORD}"
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    log ""
+                    log "Temporarily disabling authentication..."
+                    disable_authentication_temporarily
+                    log "Authentication disabled. Creating database and user..."
+                    create_database_without_auth
+                    log "Re-enabling authentication..."
+                    enable_authentication
+                else
+                    log ""
+                    read -p "Enter admin username (or press Enter to exit): " ADMIN_USER
+                    if [ -z "$ADMIN_USER" ]; then
+                        error "Exiting. Please provide admin credentials or disable authentication temporarily."
+                        exit 1
+                    fi
+                    read -sp "Enter admin password: " ADMIN_PASSWORD
+                    echo
+                    log ""
+                    create_database_with_auth "${ADMIN_USER}" "${ADMIN_PASSWORD}"
+                fi
             fi
         fi
     else
@@ -706,6 +717,38 @@ EOF
     fi
 }
 
+# Temporarily disable authentication
+disable_authentication_temporarily() {
+    log "Temporarily disabling MongoDB authentication..."
+    
+    # Backup original config if not already backed up
+    if [ ! -f /etc/mongod.conf.backup ]; then
+        cp /etc/mongod.conf /etc/mongod.conf.backup
+        log "MongoDB config backed up to /etc/mongod.conf.backup"
+    fi
+    
+    # Comment out authorization line
+    sed -i 's/^  authorization: enabled/#  authorization: enabled/' /etc/mongod.conf
+    
+    # Restart MongoDB
+    log "Restarting MongoDB..."
+    systemctl restart mongod
+    
+    # Wait for restart
+    sleep 5
+    
+    # Verify MongoDB is running
+    if ! systemctl is-active --quiet mongod; then
+        error "MongoDB failed to restart"
+        error "Restoring backup config..."
+        cp /etc/mongod.conf.backup /etc/mongod.conf
+        systemctl restart mongod
+        exit 1
+    fi
+    
+    log "Authentication temporarily disabled"
+}
+
 # Enable MongoDB authentication
 enable_authentication() {
     log "Checking MongoDB authentication status..."
@@ -726,9 +769,16 @@ enable_authentication() {
     
     # Check if security section exists
     if grep -q "^security:" /etc/mongod.conf; then
-        # Update existing security section
-        sed -i '/^security:/,/^[^ ]/ { /^  authorization:/d }' /etc/mongod.conf
-        sed -i '/^security:/a\  authorization: enabled' /etc/mongod.conf
+        # Uncomment or add authorization line
+        if grep -q "^#  authorization: enabled" /etc/mongod.conf; then
+            # Uncomment existing line
+            sed -i 's/^#  authorization: enabled/  authorization: enabled/' /etc/mongod.conf
+        else
+            # Add authorization line if it doesn't exist
+            if ! grep -q "authorization: enabled" /etc/mongod.conf; then
+                sed -i '/^security:/a\  authorization: enabled' /etc/mongod.conf
+            fi
+        fi
     else
         # Add security section
         echo "" >> /etc/mongod.conf
