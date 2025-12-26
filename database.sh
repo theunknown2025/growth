@@ -156,13 +156,22 @@ check_authentication() {
 
 # Get existing admin user
 get_admin_user() {
-    # Try common admin users
-    for user in "admin" "root" "mongodb" "growthai_user"; do
-        if mongosh --quiet --eval "db.getUser('${user}')" admin 2>/dev/null | grep -q "user"; then
+    # Try to list users (requires authentication, so this might fail)
+    # Instead, try common admin users
+    for user in "admin" "root" "mongodb"; do
+        # Try to check if user exists (this will fail if auth is required, but that's okay)
+        if mongosh --quiet --eval "try { db.getUser('${user}'); print('exists') } catch(e) { print('') }" admin 2>/dev/null | grep -q "exists"; then
             echo "${user}"
             return 0
         fi
     done
+    
+    # Also check growthai_user
+    if mongosh --quiet --eval "try { db.getUser('growthai_user'); print('exists') } catch(e) { print('') }" admin 2>/dev/null | grep -q "exists"; then
+        echo "growthai_user"
+        return 0
+    fi
+    
     return 1
 }
 
@@ -173,36 +182,64 @@ create_database() {
     # Check if authentication is enabled
     if check_authentication; then
         warning "MongoDB authentication is already enabled"
+        log ""
+        log "To create the database and user, you need admin credentials."
+        log ""
         
         # Try to find existing admin user
+        log "Checking for existing admin users..."
         ADMIN_USER=$(get_admin_user)
         
         if [ -n "$ADMIN_USER" ] && [ "$ADMIN_USER" != "growthai_user" ]; then
             warning "Found existing admin user: ${ADMIN_USER}"
+            log ""
             read -p "Enter password for ${ADMIN_USER} (or press Enter to try without password): " ADMIN_PASSWORD
             echo
             
             log "Authenticating as ${ADMIN_USER}..."
             create_database_with_auth "${ADMIN_USER}" "${ADMIN_PASSWORD}"
         else
-            # Try to authenticate with growthai_user if it exists
-            log "Attempting to authenticate with growthai_user..."
-            if mongosh --quiet --eval "db.auth('${MONGO_USER}', '${MONGO_PASSWORD}')" admin 2>/dev/null | grep -q "1"; then
-                log "Successfully authenticated with existing growthai_user"
-                create_database_with_auth "${MONGO_USER}" "${MONGO_PASSWORD}"
+            # Check if growthai_user already exists
+            log "Checking if growthai_user already exists..."
+            if mongosh --quiet --eval "db.getUser('${MONGO_USER}')" admin 2>/dev/null | grep -q "user"; then
+                warning "User '${MONGO_USER}' already exists!"
+                log "If you know the password, we can use it. Otherwise, you need admin credentials."
+                read -p "Do you know the password for ${MONGO_USER}? (y/n) " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    read -sp "Enter password for ${MONGO_USER}: " MONGO_PASSWORD_INPUT
+                    echo
+                    MONGO_PASSWORD="${MONGO_PASSWORD_INPUT}"
+                    log "Attempting to authenticate with ${MONGO_USER}..."
+                    create_database_with_auth "${MONGO_USER}" "${MONGO_PASSWORD}"
+                else
+                    log ""
+                    warning "You need admin credentials to proceed."
+                    log ""
+                    read -p "Enter admin username: " ADMIN_USER
+                    read -sp "Enter admin password: " ADMIN_PASSWORD
+                    echo
+                    log ""
+                    create_database_with_auth "${ADMIN_USER}" "${ADMIN_PASSWORD}"
+                fi
             else
-                warning "Could not authenticate. You may need to provide admin credentials."
+                log ""
+                warning "No admin user found. You need to provide admin credentials."
+                warning ""
                 warning "If you don't have admin credentials, you can:"
                 warning "1. Temporarily disable authentication in /etc/mongod.conf"
                 warning "2. Restart MongoDB: sudo systemctl restart mongod"
                 warning "3. Run this script again"
                 warning "4. Re-enable authentication after setup"
+                log ""
                 read -p "Enter admin username (or press Enter to exit): " ADMIN_USER
                 if [ -z "$ADMIN_USER" ]; then
+                    error "Exiting. Please provide admin credentials or disable authentication temporarily."
                     exit 1
                 fi
-                read -p "Enter admin password: " ADMIN_PASSWORD
+                read -sp "Enter admin password: " ADMIN_PASSWORD
                 echo
+                log ""
                 create_database_with_auth "${ADMIN_USER}" "${ADMIN_PASSWORD}"
             fi
         fi
