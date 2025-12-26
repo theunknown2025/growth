@@ -20,10 +20,33 @@ const app = express();
 // DATABASE
 require('./src/config/db');
 
-// CORS Middleware: allow requests from http://localhost:3001
+// CORS Middleware: allow requests from multiple origins
+const allowedOrigins = corsvar.origin ? corsvar.origin.split(',').map(o => o.trim()) : ['http://localhost:3000'];
 app.use(cors({
-	origin:  corsvar.origin,
-	credentials: true
+	origin: function (origin, callback) {
+		// Allow requests with no origin (like mobile apps or curl requests)
+		if (!origin) return callback(null, true);
+		
+		// Check if origin is in allowed list
+		if (allowedOrigins.includes(origin) || 
+		    allowedOrigins.some(allowed => origin.startsWith(allowed)) ||
+		    origin.includes('172.166.106.2') || // Allow IP access
+		    origin.includes('localhost') ||
+		    origin.includes('127.0.0.1')) {
+			return callback(null, true);
+		}
+		
+		// For development, allow all origins (remove in production)
+		if (process.env.NODE_ENV !== 'production') {
+			return callback(null, true);
+		}
+		
+		callback(new Error('Not allowed by CORS'));
+	},
+	credentials: true,
+	methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+	allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+	exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
 
 // Other Middleware
