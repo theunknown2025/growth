@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 272 37% 27%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 272 37% 38%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 272 37% 38%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 272 37% 27%;
+    --radius: 0.5rem;
+
+    /* Sidebar specific variables */
+    --sidebar-background: 272 37% 16%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 272 37% 16%;
+    --sidebar-accent: 272 37% 21%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 272 37% 21%;
+    --sidebar-ring: 272 37% 38%;
+  }
+
+  .dark {
+    --background: 272 37% 8%;
+    --foreground: 0 0% 98%;
+    --card: 272 37% 12%;
+    --card-foreground: 0 0% 98%;
+    --popover: 272 37% 12%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 272 37% 38%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 272 37% 27%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 272 37% 16%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 272 37% 21%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 272 37% 21%;
+    --input: 272 37% 21%;
+    --ring: 272 37% 38%;
+
+    /* Sidebar specific variables */
+    --sidebar-background: 272 37% 16%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 272 37% 16%;
+    --sidebar-accent: 272 37% 21%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 272 37% 21%;
+    --sidebar-ring: 272 37% 38%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Improved gradient background */
+.gradient-bg {
+  background: radial-gradient(circle at 50% 0%, hsl(272, 37%, 16%), hsl(272, 37%, 8%), hsl(272, 37%, 4%));
+}
+
+/* Improved card hover effect */
+.card-hover {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px -5px rgba(107, 61, 133, 0.3);
+}
+
+/* Improved feature icon */
+.feature-icon {
+  background: linear-gradient(135deg, hsl(272, 37%, 38%), hsl(272, 37%, 27%));
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 4px 12px rgba(74, 42, 93, 0.2);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .feature-icon {
+    padding: 10px;
+  }
+}
+
+/* Custom colors */
+.bg-sidebar {
+  background-color: hsl(272, 37%, 16%);
+  color: hsl(0, 0%, 98%);
+}
+
+.bg-purple-dark {
+  background-color: hsl(272, 37%, 12%);
+}
+
+.bg-purple-light {
+  background-color: hsl(272, 37%, 38%);
+}
+
+.bg-purple-primary {
+  background-color: hsl(272, 37%, 27%);
+}
