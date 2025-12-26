@@ -60,24 +60,28 @@ Growth/
 
 ## 📦 Deployment
 
-### VPS Deployment
+### 🚀 Super Simple Deployment (Recommended)
 
-For complete VPS deployment with database setup, see the deployment documentation:
+**Just upload `deploy.sh` and run it!**
 
+1. Upload `deploy.sh` to your VPS (using WinSCP)
+2. Run in PuTTY:
+   ```bash
+   chmod +x deploy.sh
+   export DOMAIN_NAME=yourdomain.com
+   sudo ./deploy.sh
+   ```
+
+The script automatically clones from GitHub and handles everything!
+
+**See [SIMPLE_DEPLOYMENT.md](SIMPLE_DEPLOYMENT.md)** for the complete guide.
+
+### 📚 Other Deployment Guides
+
+- **[SIMPLE_DEPLOYMENT.md](SIMPLE_DEPLOYMENT.md)** - ⭐ Easiest deployment method
+- **[WINDOWS_DEPLOYMENT.md](WINDOWS_DEPLOYMENT.md)** - Windows (WinSCP/PuTTY) guide
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide
 - **[QUICK_START.md](QUICK_START.md)** - Quick deployment reference
-- **[GITHUB_SETUP.md](GITHUB_SETUP.md)** - GitHub repository setup
-
-### Quick Deployment
-
-```bash
-# Set your domain and GitHub repository
-export DOMAIN_NAME=yourdomain.com
-export GITHUB_REPO=https://github.com/YOUR_USERNAME/growth-ai.git
-
-# Run deployment script
-sudo ./deploy.sh
-```
 
 ## 📚 Documentation
 

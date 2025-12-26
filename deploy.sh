@@ -25,10 +25,10 @@ MONGO_PASSWORD="${MONGO_PASSWORD:-$(openssl rand -base64 32)}"
 BACKEND_PORT="${BACKEND_PORT:-5000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 
-# GitHub Configuration (optional - if not set, assumes files are already in place)
+# GitHub Configuration (defaults to the project repository)
 # Format: https://github.com/username/repo-name.git
 # Or: git@github.com:username/repo-name.git
-GITHUB_REPO="${GITHUB_REPO:-}"
+GITHUB_REPO="${GITHUB_REPO:-https://github.com/theunknown2025/growth.git}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 
 # Logging function
@@ -210,33 +210,26 @@ setup_app_directory() {
 
 # Clone from GitHub
 clone_from_github() {
-    if [ -z "${GITHUB_REPO}" ]; then
-        warning "GITHUB_REPO not set, skipping GitHub clone"
-        warning "Assuming project files are already in ${APP_DIR}"
-        return
-    fi
-    
-    log "Cloning from GitHub: ${GITHUB_REPO}"
+    log "Setting up project from GitHub: ${GITHUB_REPO}"
     
     # Check if directory already exists and has content
     if [ -d "${APP_DIR}/.git" ]; then
         warning "Git repository already exists in ${APP_DIR}"
-        read -p "Do you want to pull latest changes? (y/n) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            cd ${APP_DIR}
-            sudo -u ${APP_USER} git pull origin ${GITHUB_BRANCH}
-            log "Pulled latest changes from GitHub"
-        fi
+        log "Pulling latest changes from GitHub..."
+        cd ${APP_DIR}
+        sudo -u ${APP_USER} git pull origin ${GITHUB_BRANCH} || {
+            warning "Git pull failed, continuing with existing files"
+        }
         return
     fi
     
-    # Clone the repository
-    cd $(dirname ${APP_DIR})
-    if [ -d "${APP_DIR}" ] && [ "$(ls -A ${APP_DIR})" ]; then
-        error "Directory ${APP_DIR} exists and is not empty"
-        error "Please remove it or set GITHUB_REPO to empty to use existing files"
-        exit 1
+    # If directory exists with files but no .git, backup and remove
+    if [ -d "${APP_DIR}" ] && [ "$(ls -A ${APP_DIR} 2>/dev/null)" ]; then
+        warning "Directory ${APP_DIR} exists with files"
+        log "Backing up existing directory..."
+        BACKUP_DIR="${APP_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
+        mv ${APP_DIR} ${BACKUP_DIR}
+        warning "Existing directory backed up to: ${BACKUP_DIR}"
     fi
     
     # Remove directory if it exists but is empty
@@ -244,9 +237,18 @@ clone_from_github() {
         rmdir ${APP_DIR} 2>/dev/null || true
     fi
     
-    # Clone repository
+    # Clone the repository
+    cd $(dirname ${APP_DIR})
     log "Cloning repository to ${APP_DIR}..."
-    git clone -b ${GITHUB_BRANCH} ${GITHUB_REPO} ${APP_DIR}
+    
+    if ! git clone -b ${GITHUB_BRANCH} ${GITHUB_REPO} ${APP_DIR} 2>/dev/null; then
+        error "Failed to clone from GitHub: ${GITHUB_REPO}"
+        error "Please check:"
+        error "  1. Internet connection"
+        error "  2. Repository URL is correct"
+        error "  3. Repository is accessible (public or you have access)"
+        exit 1
+    fi
     
     # Set ownership
     chown -R ${APP_USER}:${APP_USER} ${APP_DIR}
@@ -539,6 +541,8 @@ main() {
     
     log "Starting deployment process..."
     log "Domain: ${DOMAIN_NAME}"
+    log "GitHub Repository: ${GITHUB_REPO}"
+    log "Branch: ${GITHUB_BRANCH}"
     log "App Directory: ${APP_DIR}"
     log "Backend Port: ${BACKEND_PORT}"
     log "Frontend Port: ${FRONTEND_PORT}"
@@ -559,18 +563,8 @@ main() {
     log "========================================="
     log ""
     
-    # Clone from GitHub if repository URL is provided
-    if [ -n "${GITHUB_REPO}" ]; then
-        clone_from_github
-    else
-        log "GITHUB_REPO not set, using existing files in ${APP_DIR}"
-        log ""
-        log "IMPORTANT: Ensure project files are in place:"
-        log "1. Backend code should be in: ${BACKEND_DIR}"
-        log "2. Frontend code should be in: ${FRONTEND_DIR}"
-        log ""
-        read -p "Press Enter to continue with deployment..."
-    fi
+    # Always clone from GitHub (default repository is set)
+    clone_from_github
     
     deploy_backend
     deploy_frontend
