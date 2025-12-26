@@ -691,32 +691,64 @@ disable_authentication_temporarily() {
         log "MongoDB config backed up to /etc/mongod.conf.backup"
     fi
     
-    # Check MongoDB config format (YAML)
-    # Comment out or remove authorization line
-    if grep -q "^security:" /etc/mongod.conf; then
-        # YAML format - comment out the authorization line
-        sed -i '/^security:/,/^[^ ]/ { 
-            /^  authorization: enabled/ s/^/#/
-        }' /etc/mongod.conf
-        
-        # Also handle if it's on the same line as security
-        sed -i 's/^security:.*authorization.*enabled/# &/' /etc/mongod.conf
-        
-        # If security section becomes empty, comment it out too
-        if grep -A 2 "^security:" /etc/mongod.conf | grep -q "^[^#]" && ! grep -A 2 "^security:" /etc/mongod.conf | grep -q "authorization"; then
-            # Security section has other settings, leave it
-            true
-        fi
-    else
-        # Try to find and comment authorization in any format
-        sed -i 's/authorization: enabled/# authorization: enabled/g' /etc/mongod.conf
-        sed -i 's/authorization=enabled/# authorization=enabled/g' /etc/mongod.conf
+    # Read the current config to understand format
+    log "Reading MongoDB configuration..."
+    
+    # Use Python to properly handle YAML (more reliable than sed)
+    python3 <<PYTHON_SCRIPT
+import re
+import sys
+
+config_file = '/etc/mongod.conf'
+backup_file = '/etc/mongod.conf.backup'
+
+try:
+    with open(config_file, 'r') as f:
+        content = f.read()
+    
+    # Comment out the security section properly
+    # Handle different formats:
+    # 1. security:\n  authorization: enabled
+    # 2. security:\n    authorization: enabled
+    # 3. security: { authorization: enabled }
+    
+    # Pattern 1: YAML format with indentation
+    pattern1 = r'^(\s*)security:\s*$\n(\s+)authorization:\s+enabled'
+    replacement1 = r'\1# security:\n\2# authorization: enabled'
+    content = re.sub(pattern1, replacement1, content, flags=re.MULTILINE)
+    
+    # Pattern 2: If security line exists but authorization is separate
+    if 'security:' in content and 'authorization: enabled' in content:
+        # Comment out security line
+        content = re.sub(r'^(\s*)security:\s*$', r'\1# security:', content, flags=re.MULTILINE)
+        # Comment out authorization line (with proper indentation)
+        content = re.sub(r'^(\s+)authorization:\s+enabled\s*$', r'\1# authorization: enabled', content, flags=re.MULTILINE)
+    
+    # Write back
+    with open(config_file, 'w') as f:
+        f.write(content)
+    
+    print("Config updated successfully")
+    sys.exit(0)
+except Exception as e:
+    print(f"Error: {e}")
+    sys.exit(1)
+PYTHON_SCRIPT
+
+    if [ $? -ne 0 ]; then
+        # Fallback to sed if Python fails
+        warning "Python method failed, using sed fallback..."
+        # Simple sed approach - comment out security section
+        sed -i '/^security:/s/^/# /' /etc/mongod.conf
+        sed -i '/authorization: enabled/s/^[^#]/# &/' /etc/mongod.conf
     fi
     
-    # Test config before restarting
-    log "Testing MongoDB configuration..."
-    if ! mongod --config /etc/mongod.conf --test 2>/dev/null; then
-        warning "Config test failed, but continuing..."
+    # Verify the config looks correct
+    log "Verifying configuration..."
+    if grep -q "^#.*security:" /etc/mongod.conf || ! grep -q "^security:" /etc/mongod.conf; then
+        log "Configuration looks correct"
+    else
+        warning "Config might still have security enabled, but continuing..."
     fi
     
     # Restart MongoDB
@@ -739,8 +771,12 @@ disable_authentication_temporarily() {
         
         if systemctl is-active --quiet mongod; then
             error "MongoDB restored but authentication is still enabled"
-            error "Please manually edit /etc/mongod.conf to disable authentication"
-            error "Or provide admin credentials instead"
+            error ""
+            error "Please manually edit /etc/mongod.conf:"
+            error "  1. sudo nano /etc/mongod.conf"
+            error "  2. Comment out: security: and authorization: enabled"
+            error "  3. sudo systemctl restart mongod"
+            error "  4. Run this script again"
         else
             error "MongoDB failed to start even with backup config"
             error "Please check: sudo journalctl -u mongod -n 50"
