@@ -691,22 +691,60 @@ disable_authentication_temporarily() {
         log "MongoDB config backed up to /etc/mongod.conf.backup"
     fi
     
-    # Comment out authorization line
-    sed -i 's/^  authorization: enabled/#  authorization: enabled/' /etc/mongod.conf
+    # Check MongoDB config format (YAML)
+    # Comment out or remove authorization line
+    if grep -q "^security:" /etc/mongod.conf; then
+        # YAML format - comment out the authorization line
+        sed -i '/^security:/,/^[^ ]/ { 
+            /^  authorization: enabled/ s/^/#/
+        }' /etc/mongod.conf
+        
+        # Also handle if it's on the same line as security
+        sed -i 's/^security:.*authorization.*enabled/# &/' /etc/mongod.conf
+        
+        # If security section becomes empty, comment it out too
+        if grep -A 2 "^security:" /etc/mongod.conf | grep -q "^[^#]" && ! grep -A 2 "^security:" /etc/mongod.conf | grep -q "authorization"; then
+            # Security section has other settings, leave it
+            true
+        fi
+    else
+        # Try to find and comment authorization in any format
+        sed -i 's/authorization: enabled/# authorization: enabled/g' /etc/mongod.conf
+        sed -i 's/authorization=enabled/# authorization=enabled/g' /etc/mongod.conf
+    fi
+    
+    # Test config before restarting
+    log "Testing MongoDB configuration..."
+    if ! mongod --config /etc/mongod.conf --test 2>/dev/null; then
+        warning "Config test failed, but continuing..."
+    fi
     
     # Restart MongoDB
     log "Restarting MongoDB..."
     systemctl restart mongod
     
     # Wait for restart
-    sleep 5
+    sleep 8
     
     # Verify MongoDB is running
     if ! systemctl is-active --quiet mongod; then
         error "MongoDB failed to restart"
+        error "Checking MongoDB logs..."
+        systemctl status mongod --no-pager -l | tail -20
+        
         error "Restoring backup config..."
         cp /etc/mongod.conf.backup /etc/mongod.conf
         systemctl restart mongod
+        sleep 5
+        
+        if systemctl is-active --quiet mongod; then
+            error "MongoDB restored but authentication is still enabled"
+            error "Please manually edit /etc/mongod.conf to disable authentication"
+            error "Or provide admin credentials instead"
+        else
+            error "MongoDB failed to start even with backup config"
+            error "Please check: sudo journalctl -u mongod -n 50"
+        fi
         exit 1
     fi
     
