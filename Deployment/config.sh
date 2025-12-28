@@ -10,7 +10,7 @@ export DOMAIN_NAME="${DOMAIN_NAME:-yourdomain.com}"
 export APP_USER="${APP_USER:-growthai}"
 export APP_DIR="${APP_DIR:-/var/www/growth-ai}"
 export BACKEND_DIR="${APP_DIR}/api-gateway-growth"
-export FRONTEND_DIR="${APP_DIR}/growth-ai}"
+export FRONTEND_DIR="${APP_DIR}/growth-ai"
 
 # Database Configuration
 export MONGO_DB_NAME="${MONGO_DB_NAME:-growthai}"
