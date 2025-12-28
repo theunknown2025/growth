@@ -31,7 +31,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-SWAP_SIZE="${1:-2G}"  # Default 2GB, can override
+SWAP_SIZE="${1:-4G}"  # Default 4GB, can override
 
 log "Creating ${SWAP_SIZE} swap file..."
 
@@ -65,18 +65,18 @@ if command -v fallocate &> /dev/null; then
     fallocate -l ${SWAP_SIZE} /swapfile || {
         error "fallocate failed, trying dd method..."
         dd if=/dev/zero of=/swapfile bs=1024 count=$(($(echo ${SWAP_SIZE} | sed 's/G/*1024*1024/' | bc))) 2>/dev/null || {
-            # Fallback: 2GB
-            log "Using fallback: creating 2GB swap file..."
-            dd if=/dev/zero of=/swapfile bs=1024 count=2097152
+            # Fallback: 4GB
+            log "Using fallback: creating 4GB swap file..."
+            dd if=/dev/zero of=/swapfile bs=1024 count=4194304
         }
     }
 else
-    # Calculate size in KB (2GB = 2097152 KB)
+    # Calculate size in KB (4GB = 4194304 KB)
     if [[ "$SWAP_SIZE" == *"G" ]]; then
         SIZE_GB=$(echo $SWAP_SIZE | sed 's/G//')
         SIZE_KB=$((SIZE_GB * 1024 * 1024))
     else
-        SIZE_KB=2097152  # Default 2GB
+        SIZE_KB=4194304  # Default 4GB
     fi
     dd if=/dev/zero of=/swapfile bs=1024 count=${SIZE_KB}
 fi

@@ -11,10 +11,10 @@ The error `Killed` during `npm install` means the process was terminated by the 
 # Check current memory
 free -h
 
-# Create 2GB swap file
-sudo fallocate -l 2G /swapfile
+# Create 4GB swap file
+sudo fallocate -l 4G /swapfile
 # Or if fallocate doesn't work:
-# sudo dd if=/dev/zero of=/swapfile bs=1024 count=2097152
+# sudo dd if=/dev/zero of=/swapfile bs=1024 count=4194304
 
 # Set permissions
 sudo chmod 600 /swapfile

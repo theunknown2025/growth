@@ -32,3 +32,6 @@ export NODE_VERSION="${NODE_VERSION:-20}"
 # MongoDB Version
 export MONGO_VERSION="${MONGO_VERSION:-7.0}"
 
+# Swap Configuration
+export SWAP_SIZE="${SWAP_SIZE:-4G}"  # Swap file size (default: 4GB)
+

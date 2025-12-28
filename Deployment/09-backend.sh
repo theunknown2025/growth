@@ -35,8 +35,15 @@ deploy_backend() {
             
             # Try to create swap if it doesn't exist
             if [ ! -f /swapfile ]; then
-                log "Creating 2GB swap file to help with installation..."
-                fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1024 count=2097152
+                log "Creating ${SWAP_SIZE} swap file to help with installation..."
+                # Calculate size in KB (4GB = 4194304 KB)
+                if [[ "$SWAP_SIZE" == *"G" ]]; then
+                    SIZE_GB=$(echo $SWAP_SIZE | sed 's/G//')
+                    SIZE_KB=$((SIZE_GB * 1024 * 1024))
+                else
+                    SIZE_KB=4194304  # Default 4GB
+                fi
+                fallocate -l ${SWAP_SIZE} /swapfile || dd if=/dev/zero of=/swapfile bs=1024 count=${SIZE_KB}
                 chmod 600 /swapfile
                 mkswap /swapfile
                 swapon /swapfile

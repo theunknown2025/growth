@@ -41,7 +41,7 @@ fi
 
 if [ "$SWAP_TOTAL" -eq 0 ]; then
     echo "⚠️  WARNING: No swap space detected"
-    echo "   Recommendation: Create 2GB swap file"
+    echo "   Recommendation: Create 4GB swap file"
 fi
 
 echo ""
