@@ -67,6 +67,14 @@ deploy_backend() {
     # Create .env file if it doesn't exist
     if [ ! -f "${BACKEND_DIR}/.env" ]; then
         log "Creating backend .env file..."
+        
+        # Determine protocol based on domain (IP = http, domain = https)
+        if [[ "${DOMAIN_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            CORS_PROTOCOL="http://"
+        else
+            CORS_PROTOCOL="https://"
+        fi
+        
         cat > ${BACKEND_DIR}/.env <<EOF
 # MongoDB Configuration
 MONGODB=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@localhost:${MONGO_PORT}/${MONGO_DB_NAME}?authSource=admin
@@ -82,7 +90,7 @@ jwtExpirationDate=7d
 OPENAI_API_KEY=your_openai_api_key_here
 
 # CORS Configuration (use http:// for IP addresses, https:// for domains)
-CORS_ORIGIN=$(if [[ "${DOMAIN_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "http://${DOMAIN_NAME}"; else echo "https://${DOMAIN_NAME}"; fi)
+CORS_ORIGIN=${CORS_PROTOCOL}${DOMAIN_NAME}
 
 # Server Port
 PORT=${BACKEND_PORT}

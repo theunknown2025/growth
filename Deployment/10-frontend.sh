@@ -64,10 +64,18 @@ deploy_frontend() {
     # Create .env.local file if it doesn't exist
     if [ ! -f "${FRONTEND_DIR}/.env.local" ]; then
         log "Creating frontend .env.local file..."
+        
+        # Determine protocol based on domain (IP = http, domain = https)
+        if [[ "${DOMAIN_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            API_PROTOCOL="http://"
+        else
+            API_PROTOCOL="https://"
+        fi
+        
         cat > ${FRONTEND_DIR}/.env.local <<EOF
 # API Configuration (use http:// for IP addresses, https:// for domains)
-NEXT_PUBLIC_SERVER_URL=$(if [[ "${DOMAIN_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "http://${DOMAIN_NAME}"; else echo "https://${DOMAIN_NAME}"; fi)
-NEXT_PUBLIC_BASE_URL=$(if [[ "${DOMAIN_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "http://${DOMAIN_NAME}/api"; else echo "https://${DOMAIN_NAME}/api"; fi)
+NEXT_PUBLIC_SERVER_URL=${API_PROTOCOL}${DOMAIN_NAME}
+NEXT_PUBLIC_BASE_URL=${API_PROTOCOL}${DOMAIN_NAME}/api
 EOF
         chown ${APP_USER}:${APP_USER} ${FRONTEND_DIR}/.env.local
         chmod 600 ${FRONTEND_DIR}/.env.local
