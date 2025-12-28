@@ -6,7 +6,7 @@
 ################################################################################
 
 # Application Configuration
-export DOMAIN_NAME="${DOMAIN_NAME:-yourdomain.com}"
+export DOMAIN_NAME="${DOMAIN_NAME:-172.166.106.2}"
 export APP_USER="${APP_USER:-growthai}"
 export APP_DIR="${APP_DIR:-/var/www/growth-ai}"
 export BACKEND_DIR="${APP_DIR}/api-gateway-growth"
