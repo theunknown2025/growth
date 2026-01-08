@@ -23,7 +23,7 @@ export type ConfigValue = {
 export const CONFIG: ConfigValue = {
   site: {
     name: 'Brand Impact',
-    serverUrl: process.env.NEXT_PUBLIC_SERVER_URL ?? '',
+    serverUrl: process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:5000',
     version: packageJson.version,
   },
   auth: {
